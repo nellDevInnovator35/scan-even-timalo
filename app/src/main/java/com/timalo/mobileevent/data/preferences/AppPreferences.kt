@@ -22,13 +22,10 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class AppPreferences(private val context: Context) {
 
     private object Keys {
-        val TOKEN = stringPreferencesKey("jwt_token")
         val ANTHROPIC_KEY = stringPreferencesKey("anthropic_api_key")
         val ENVIRONMENT = stringPreferencesKey("environment")
+        fun token(env: Environment) = stringPreferencesKey("jwt_token_${env.name}")
     }
-
-    val tokenFlow: Flow<String?> = context.dataStore.data
-        .map { it[Keys.TOKEN] }
 
     val anthropicKeyFlow: Flow<String?> = context.dataStore.data
         .map { it[Keys.ANTHROPIC_KEY] }
@@ -36,18 +33,23 @@ class AppPreferences(private val context: Context) {
     val environmentFlow: Flow<Environment> = context.dataStore.data
         .map { Environment.fromName(it[Keys.ENVIRONMENT]) }
 
-    suspend fun getToken(): String? = tokenFlow.first()
+    /** Flow du token pour un environnement donné. */
+    fun tokenFlow(env: Environment): Flow<String?> = context.dataStore.data
+        .map { it[Keys.token(env)] }
+
+    suspend fun getToken(env: Environment): String? =
+        context.dataStore.data.first()[Keys.token(env)]
 
     suspend fun getAnthropicKey(): String? = anthropicKeyFlow.first()
 
     suspend fun getEnvironment(): Environment = environmentFlow.first()
 
-    suspend fun saveToken(token: String) {
-        context.dataStore.edit { it[Keys.TOKEN] = token }
+    suspend fun saveToken(env: Environment, token: String) {
+        context.dataStore.edit { it[Keys.token(env)] = token }
     }
 
-    suspend fun clearToken() {
-        context.dataStore.edit { it.remove(Keys.TOKEN) }
+    suspend fun clearToken(env: Environment) {
+        context.dataStore.edit { it.remove(Keys.token(env)) }
     }
 
     suspend fun saveAnthropicKey(key: String) {

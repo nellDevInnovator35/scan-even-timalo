@@ -5,10 +5,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.timalo.mobileevent.data.preferences.AppPreferences
+import com.timalo.mobileevent.model.Environment
 import com.timalo.mobileevent.ui.screens.CreateEventScreen
 import com.timalo.mobileevent.ui.screens.LoginScreen
 import com.timalo.mobileevent.ui.screens.SettingsScreen
@@ -30,19 +33,25 @@ object Routes {
 fun AppNavigation(
     factory: ViewModelProvider.Factory,
     prefs: AppPreferences,
+    env: Environment,
     initialToken: String?
 ) {
     val navController = rememberNavController()
 
-    // Réagit à la perte de token (déconnexion) pour repartir au login.
-    val token by prefs.tokenFlow.collectAsState(initial = initialToken)
+    // Réagit à la perte de token de l'env courant (déconnexion) pour repartir au login.
+    val token by prefs.tokenFlow(env).collectAsState(initial = initialToken)
 
     val startDestination = if (initialToken.isNullOrBlank()) Routes.LOGIN else Routes.CREATE_EVENT
 
     NavHost(navController = navController, startDestination = startDestination) {
 
-        composable(Routes.LOGIN) {
+        composable(
+            route = "${Routes.LOGIN}?env={env}",
+            arguments = listOf(navArgument("env") { type = NavType.StringType; defaultValue = "" })
+        ) { backStack ->
             val vm: LoginViewModel = viewModel(factory = factory)
+            val envParam = backStack.arguments?.getString("env").orEmpty()
+            if (envParam.isNotBlank()) vm.forceEnv(Environment.fromName(envParam))
             LoginScreen(
                 viewModel = vm,
                 onLoggedIn = {
@@ -57,7 +66,13 @@ fun AppNavigation(
             val vm: CreateEventViewModel = viewModel(factory = factory)
             CreateEventScreen(
                 viewModel = vm,
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onNeedsLogin = { targetEnv ->
+                    // Sauvegarde l'env cible et navigue vers le login
+                    navController.navigate("${Routes.LOGIN}?env=${targetEnv.name}") {
+                        popUpTo(Routes.CREATE_EVENT)
+                    }
+                }
             )
         }
 

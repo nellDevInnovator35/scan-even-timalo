@@ -21,9 +21,11 @@ data class CreateEventUiState(
     val form: EventForm = EventForm(),
     val env: Environment = Environment.PREPROD,
     val submitting: Boolean = false,
+    val submittingEnv: Environment? = null, // env en cours d'envoi
     val aiLoading: Boolean = false,
     val error: String? = null,
     val successMessage: String? = null,
+    val needsLoginForEnv: Environment? = null, // demande de login pour cet env
     // Multi-jours
     val occurrences: List<EventOccurrence> = emptyList(),
     val showMultiDayReview: Boolean = false,
@@ -78,6 +80,10 @@ class CreateEventViewModel(
         _uiState.value = _uiState.value.copy(error = null, successMessage = null, multiDayResult = null)
     }
 
+    fun clearNeedsLogin() {
+        _uiState.value = _uiState.value.copy(needsLoginForEnv = null)
+    }
+
     /** Validation minimale des champs obligatoires. */
     private fun validate(form: EventForm): String? {
         return when {
@@ -91,43 +97,52 @@ class CreateEventViewModel(
     }
 
     /**
-     * Soumet l'événement. Si start/end sont sur des jours différents,
-     * bascule vers l'écran de revue multi-jours au lieu de créer directement.
+     * Soumet l'événement vers l'environnement cible.
+     * Vérifie le token ; si absent, demande un login via needsLoginForEnv.
+     * Si multi-jours, bascule vers l'écran de revue.
      */
-    fun submit() {
+    fun submitToEnv(targetEnv: Environment) {
         val form = _uiState.value.form
         validate(form)?.let {
             _uiState.value = _uiState.value.copy(error = it)
             return
         }
-
-        if (isMultiDay(form.startDate, form.endDate)) {
-            val occurrences = generateOccurrences(form.startDate, form.endDate)
-            _uiState.value = _uiState.value.copy(
-                occurrences = occurrences,
-                showMultiDayReview = true,
-                error = null
-            )
-            return
+        viewModelScope.launch {
+            val token = prefs.getToken(targetEnv)
+            if (token.isNullOrBlank()) {
+                _uiState.value = _uiState.value.copy(needsLoginForEnv = targetEnv)
+                return@launch
+            }
+            if (isMultiDay(form.startDate, form.endDate)) {
+                val occurrences = generateOccurrences(form.startDate, form.endDate)
+                _uiState.value = _uiState.value.copy(
+                    occurrences = occurrences,
+                    showMultiDayReview = true,
+                    submittingEnv = targetEnv,
+                    error = null
+                )
+                return@launch
+            }
+            createSingle(form, targetEnv)
         }
-
-        createSingle(form)
     }
 
-    private fun createSingle(form: EventForm) {
-        _uiState.value = _uiState.value.copy(submitting = true, error = null, successMessage = null)
+    private fun createSingle(form: EventForm, targetEnv: Environment) {
+        _uiState.value = _uiState.value.copy(submitting = true, submittingEnv = targetEnv, error = null, successMessage = null)
         viewModelScope.launch {
-            val result = eventRepository.createEvent(_uiState.value.env, form)
+            val result = eventRepository.createEvent(targetEnv, form)
             result.fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(
                         submitting = false,
-                        successMessage = "Événement créé ✅"
+                        submittingEnv = null,
+                        successMessage = "Envoyé sur ${targetEnv.displayName} ✅"
                     )
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(
                         submitting = false,
+                        submittingEnv = null,
                         error = e.message ?: "Échec de la création"
                     )
                 }
@@ -152,6 +167,7 @@ class CreateEventViewModel(
     fun confirmMultiDay() {
         val base = _uiState.value.form
         val occurrences = _uiState.value.occurrences
+        val targetEnv = _uiState.value.submittingEnv ?: _uiState.value.env
         if (occurrences.isEmpty()) return
 
         _uiState.value = _uiState.value.copy(submitting = true, error = null, multiDayResult = null)
@@ -159,7 +175,7 @@ class CreateEventViewModel(
             var created = 0
             for (occ in occurrences) {
                 val form = base.copy(startDate = occ.startDate, endDate = occ.endDate)
-                val result = eventRepository.createEvent(_uiState.value.env, form)
+                val result = eventRepository.createEvent(targetEnv, form)
                 if (result.isSuccess) created++
             }
             _uiState.value = _uiState.value.copy(
@@ -187,10 +203,12 @@ class CreateEventViewModel(
                 onSuccess = { enrichment ->
                     updateForm { current ->
                         current.copy(
-                            description = enrichment.description?.takeIf { it.isNotBlank() }
-                                ?: current.description,
-                            organizerName = enrichment.organizerName?.takeIf { it.isNotBlank() }
-                                ?: current.organizerName,
+                            title = enrichment.title?.takeIf { it.isNotBlank() } ?: current.title,
+                            description = enrichment.description?.takeIf { it.isNotBlank() } ?: current.description,
+                            organizerName = enrichment.organizerName?.takeIf { it.isNotBlank() } ?: current.organizerName,
+                            organizerEmail = enrichment.organizerEmail?.takeIf { it.isNotBlank() } ?: current.organizerEmail,
+                            startDate = enrichment.startDate?.takeIf { it.isNotBlank() } ?: current.startDate,
+                            endDate = enrichment.endDate?.takeIf { it.isNotBlank() } ?: current.endDate,
                             types = enrichment.types?.takeIf { it.isNotEmpty() } ?: current.types
                         )
                     }

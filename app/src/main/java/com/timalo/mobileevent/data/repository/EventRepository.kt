@@ -15,8 +15,8 @@ class EventRepository(
     /** Crée un événement unique. Retourne le corps brut de la réponse en succès. */
     suspend fun createEvent(env: Environment, form: EventForm): Result<String> =
         withContext(Dispatchers.IO) {
-            val token = prefs.getToken()
-                ?: return@withContext Result.failure(IllegalStateException("Non authentifié"))
+            val token = prefs.getToken(env)
+                ?: return@withContext Result.failure(IllegalStateException("Non authentifié — connecte-toi sur cet environnement"))
             api.createEvent(env.baseUrl, token, form)
         }
 }

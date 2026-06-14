@@ -77,16 +77,19 @@ class AnthropicApi(private val gson: Gson = Gson()) {
     private fun buildRequestBody(title: String, location: String, startDate: String): JsonObject {
         val prompt = buildString {
             append("Tu enrichis une fiche d'événement local à Saint-Malo (France).\n")
-            append("Titre : $title\n")
+            if (title.isNotBlank()) append("Indice titre : $title\n")
             if (location.isNotBlank()) append("Lieu : $location\n")
-            if (startDate.isNotBlank()) append("Date de début : $startDate\n")
-            append("\nRecherche sur le web des informations fiables sur cet événement ")
-            append("(organisateur, description, nature de l'activité).\n\n")
+            if (startDate.isNotBlank()) append("Date approximative : $startDate\n")
+            append("\nRecherche sur le web des informations fiables sur cet événement.\n\n")
             append("Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, ")
-            append("avec exactement ces clés :\n")
+            append("avec exactement ces clés (null si information introuvable) :\n")
             append("{\n")
+            append("  \"title\": \"titre officiel exact de l'événement\",\n")
             append("  \"description\": \"un paragraphe descriptif clair en français\",\n")
-            append("  \"organizer_name\": \"le nom de l'organisateur\",\n")
+            append("  \"organizer_name\": \"le nom de l'organisateur ou de l'association\",\n")
+            append("  \"organizer_email\": \"email de contact si trouvé, sinon null\",\n")
+            append("  \"start_date\": \"date et heure de début au format yyyy-MM-dd'T'HH:mm:ss, heure locale française, null si inconnue\",\n")
+            append("  \"end_date\": \"date et heure de fin au format yyyy-MM-dd'T'HH:mm:ss, null si inconnue\",\n")
             append("  \"types\": [\"...\"]\n")
             append("}\n")
             append("Les valeurs autorisées pour types sont exactement : ")
@@ -139,12 +142,16 @@ class AnthropicApi(private val gson: Gson = Gson()) {
                 ?: return Result.failure(IOException("Pas de JSON exploitable dans la réponse IA"))
 
             val parsed = JsonParser.parseString(jsonText).asJsonObject
-            val description = parsed.get("description")?.asString
-            val organizerName = parsed.get("organizer_name")?.asString
+            val title = parsed.get("title")?.takeIf { !it.isJsonNull }?.asString
+            val description = parsed.get("description")?.takeIf { !it.isJsonNull }?.asString
+            val organizerName = parsed.get("organizer_name")?.takeIf { !it.isJsonNull }?.asString
+            val organizerEmail = parsed.get("organizer_email")?.takeIf { !it.isJsonNull }?.asString
+            val startDate = parsed.get("start_date")?.takeIf { !it.isJsonNull }?.asString
+            val endDate = parsed.get("end_date")?.takeIf { !it.isJsonNull }?.asString
             val types = parsed.getAsJsonArray("types")?.mapNotNull { it.asString }
                 ?.filter { it in VALID_TYPES }
 
-            Result.success(AiEnrichment(description, organizerName, types))
+            Result.success(AiEnrichment(title, description, organizerName, organizerEmail, startDate, endDate, types))
         } catch (e: Exception) {
             Result.failure(e)
         }

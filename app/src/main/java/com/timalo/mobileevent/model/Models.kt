@@ -94,7 +94,11 @@ data class EventOccurrence(
 
 /** Résultat de l'enrichissement IA. */
 data class AiEnrichment(
+    val title: String?,
     val description: String?,
     val organizerName: String?,
+    val organizerEmail: String?,
+    val startDate: String?,
+    val endDate: String?,
     val types: List<String>?
 )

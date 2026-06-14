@@ -130,7 +130,7 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = {
                     scope.launch {
-                        prefs.clearToken()
+                        prefs.clearToken(prefs.getEnvironment())
                         onLoggedOut()
                     }
                 },

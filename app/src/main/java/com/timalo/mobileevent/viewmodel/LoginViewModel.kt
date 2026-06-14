@@ -50,6 +50,11 @@ class LoginViewModel(
         applyEnvDefaults(env)
     }
 
+    /** Pré-sélectionne un env sans le persister (appelé depuis la navigation). */
+    fun forceEnv(env: Environment) {
+        applyEnvDefaults(env)
+    }
+
     fun onEmailChange(value: String) {
         _uiState.value = _uiState.value.copy(email = value)
     }

@@ -20,7 +20,7 @@ class AuthRepository(
                     if (token.isNullOrBlank()) {
                         Result.failure(IllegalStateException("Token absent de la réponse"))
                     } else {
-                        prefs.saveToken(token)
+                        prefs.saveToken(env, token)
                         Result.success(Unit)
                     }
                 },
@@ -28,7 +28,7 @@ class AuthRepository(
             )
         }
 
-    suspend fun logout() = prefs.clearToken()
+    suspend fun logout(env: Environment) = prefs.clearToken(env)
 
-    suspend fun currentToken(): String? = prefs.getToken()
+    suspend fun currentToken(env: Environment): String? = prefs.getToken(env)
 }

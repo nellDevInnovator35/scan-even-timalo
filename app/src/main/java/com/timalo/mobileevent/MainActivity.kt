@@ -9,6 +9,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import com.timalo.mobileevent.model.Environment
+import kotlinx.coroutines.flow.combine
 import androidx.compose.ui.Modifier
 import com.timalo.mobileevent.navigation.AppNavigation
 import com.timalo.mobileevent.ui.theme.MobileEventTheme
@@ -29,11 +32,13 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Token initial : décide de la route de départ
-                    val token by container.prefs.tokenFlow.collectAsState(initial = null)
+                    // Token de l'env courant : décide de la route de départ
+                    val env by container.prefs.environmentFlow.collectAsState(initial = Environment.PREPROD)
+                    val token by container.prefs.tokenFlow(env).collectAsState(initial = null)
                     AppNavigation(
                         factory = factory,
                         prefs = container.prefs,
+                        env = env,
                         initialToken = token
                     )
                 }

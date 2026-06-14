@@ -16,7 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -26,7 +28,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import com.timalo.mobileevent.model.Environment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,13 +58,33 @@ import java.io.File
 @Composable
 fun CreateEventScreen(
     viewModel: CreateEventViewModel,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onNeedsLogin: (Environment) -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val form = state.form
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.refreshEnv() }
+
+    // Redirige vers login si token manquant pour l'env cible
+    val needsLogin = state.needsLoginForEnv
+    if (needsLogin != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearNeedsLogin() },
+            title = { Text("Connexion requise") },
+            text = { Text("Tu n'es pas connecté sur ${needsLogin.displayName}. Connecte-toi d'abord.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearNeedsLogin()
+                    onNeedsLogin(needsLogin)
+                }) { Text("Se connecter") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.clearNeedsLogin() }) { Text("Annuler") }
+            }
+        )
+    }
 
     // URI temporaire pour la photo caméra
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -274,19 +298,31 @@ fun CreateEventScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // Bouton → Préprod
             Button(
-                onClick = viewModel::submit,
+                onClick = { viewModel.submitToEnv(Environment.PREPROD) },
                 enabled = !state.submitting,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFF97316))
             ) {
-                if (state.submitting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.height(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
+                if (state.submitting && state.submittingEnv == Environment.PREPROD) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp), color = androidx.compose.ui.graphics.Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text("Créer l'événement")
+                    Text("→ Envoyer en PRÉPROD")
+                }
+            }
+
+            // Bouton → Prod
+            Button(
+                onClick = { viewModel.submitToEnv(Environment.PROD) },
+                enabled = !state.submitting,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFDC2626))
+            ) {
+                if (state.submitting && state.submittingEnv == Environment.PROD) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp), color = androidx.compose.ui.graphics.Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text("→ Envoyer en PROD")
                 }
             }
 
