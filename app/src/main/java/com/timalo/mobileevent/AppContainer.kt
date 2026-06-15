@@ -28,7 +28,7 @@ class AppContainer(context: Context) {
 
     val authRepository = AuthRepository(tiMaloApi, prefs)
     val eventRepository = EventRepository(tiMaloApi, prefs)
-    val aiRepository = AiRepository(anthropicApi, prefs)
+    val aiRepository = AiRepository(anthropicApi, prefs, appContext)
 }
 
 /** Factory unique pour tous les ViewModels de l'app. */

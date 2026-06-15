@@ -192,13 +192,13 @@ class CreateEventViewModel(
 
     fun enrichWithAi() {
         val form = _uiState.value.form
-        if (form.title.isBlank()) {
-            _uiState.value = _uiState.value.copy(error = "Renseignez d'abord le titre")
+        if (form.imageUri == null && form.title.isBlank()) {
+            _uiState.value = _uiState.value.copy(error = "Charge une image ou saisis un titre pour l'IA")
             return
         }
         _uiState.value = _uiState.value.copy(aiLoading = true, error = null)
         viewModelScope.launch {
-            val result = aiRepository.enrich(form.title, form.location, form.startDate)
+            val result = aiRepository.enrich(form.imageUri, form.title, form.location, form.startDate)
             result.fold(
                 onSuccess = { enrichment ->
                     updateForm { current ->

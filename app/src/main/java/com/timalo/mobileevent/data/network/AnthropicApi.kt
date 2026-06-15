@@ -1,5 +1,6 @@
 package com.timalo.mobileevent.data.network
 
+import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -43,6 +44,8 @@ class AnthropicApi(private val gson: Gson = Gson()) {
      */
     fun enrich(
         apiKey: String,
+        imageBytes: ByteArray?,
+        imageMime: String?,
         title: String,
         location: String,
         startDate: String
@@ -51,16 +54,15 @@ class AnthropicApi(private val gson: Gson = Gson()) {
             return Result.failure(IOException("Clé API Anthropic manquante. Configurez-la dans Réglages."))
         }
         return try {
-            val body = buildRequestBody(title, location, startDate)
+            val body = buildRequestBody(imageBytes, imageMime, title, location, startDate)
 
-            val request = Request.Builder()
+            val reqBuilder = Request.Builder()
                 .url(URL)
                 .addHeader("x-api-key", apiKey)
                 .addHeader("anthropic-version", ANTHROPIC_VERSION)
-                .addHeader("anthropic-beta", WEB_SEARCH_BETA)
                 .addHeader("content-type", "application/json")
-                .post(body.toString().toRequestBody(jsonMedia))
-                .build()
+            if (imageBytes == null) reqBuilder.addHeader("anthropic-beta", WEB_SEARCH_BETA)
+            val request = reqBuilder.post(body.toString().toRequestBody(jsonMedia)).build()
 
             client.newCall(request).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
@@ -74,14 +76,24 @@ class AnthropicApi(private val gson: Gson = Gson()) {
         }
     }
 
-    private fun buildRequestBody(title: String, location: String, startDate: String): JsonObject {
+    private fun buildRequestBody(
+        imageBytes: ByteArray?,
+        imageMime: String?,
+        title: String,
+        location: String,
+        startDate: String
+    ): JsonObject {
         val prompt = buildString {
-            append("Tu enrichis une fiche d'événement local à Saint-Malo (France).\n")
-            if (title.isNotBlank()) append("Indice titre : $title\n")
-            if (location.isNotBlank()) append("Lieu : $location\n")
-            if (startDate.isNotBlank()) append("Date approximative : $startDate\n")
-            append("\nRecherche sur le web des informations fiables sur cet événement.\n\n")
-            append("Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, ")
+            if (imageBytes != null) {
+                append("Analyse cette image (flyer ou affiche d'événement) et extrais toutes les informations disponibles.\n")
+            } else {
+                append("Tu enrichis une fiche d'événement local à Saint-Malo (France).\n")
+                if (title.isNotBlank()) append("Indice titre : $title\n")
+                if (location.isNotBlank()) append("Lieu : $location\n")
+                if (startDate.isNotBlank()) append("Date approximative : $startDate\n")
+                append("Recherche sur le web des informations fiables sur cet événement.\n")
+            }
+            append("\nRéponds UNIQUEMENT avec un objet JSON valide, sans texte autour, ")
             append("avec exactement ces clés (null si information introuvable) :\n")
             append("{\n")
             append("  \"title\": \"titre officiel exact de l'événement\",\n")
@@ -97,26 +109,46 @@ class AnthropicApi(private val gson: Gson = Gson()) {
             append(". Choisis un à trois types pertinents.")
         }
 
-        // Outil web_search
-        val webSearchTool = JsonObject().apply {
-            addProperty("type", "web_search_20250305")
-            addProperty("name", "web_search")
-            addProperty("max_uses", 3)
+        // Contenu du message : image (si présente) + texte
+        val contentArray = JsonArray()
+        if (imageBytes != null && imageMime != null) {
+            val b64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+            val sourceObj = JsonObject().apply {
+                addProperty("type", "base64")
+                addProperty("media_type", imageMime)
+                addProperty("data", b64)
+            }
+            contentArray.add(JsonObject().apply {
+                addProperty("type", "image")
+                add("source", sourceObj)
+            })
         }
-        val tools = JsonArray().apply { add(webSearchTool) }
+        contentArray.add(JsonObject().apply {
+            addProperty("type", "text")
+            addProperty("text", prompt)
+        })
 
         val userMessage = JsonObject().apply {
             addProperty("role", "user")
-            addProperty("content", prompt)
+            add("content", contentArray)
         }
         val messages = JsonArray().apply { add(userMessage) }
 
-        return JsonObject().apply {
+        // web_search activé seulement si pas d'image (l'image est la source principale)
+        val body = JsonObject().apply {
             addProperty("model", MODEL)
             addProperty("max_tokens", 1024)
-            add("tools", tools)
             add("messages", messages)
         }
+        if (imageBytes == null) {
+            val webSearchTool = JsonObject().apply {
+                addProperty("type", "web_search_20250305")
+                addProperty("name", "web_search")
+                addProperty("max_uses", 3)
+            }
+            body.add("tools", JsonArray().apply { add(webSearchTool) })
+        }
+        return body
     }
 
     /** Extrait le dernier bloc text de content[] et parse le JSON qu'il contient. */

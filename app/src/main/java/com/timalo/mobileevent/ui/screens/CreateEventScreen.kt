@@ -164,7 +164,7 @@ fun CreateEventScreen(
             // Bouton IA
             OutlinedButton(
                 onClick = viewModel::enrichWithAi,
-                enabled = form.title.isNotBlank() && !state.aiLoading,
+                enabled = (form.imageUri != null || form.title.isNotBlank()) && !state.aiLoading,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.aiLoading) {
